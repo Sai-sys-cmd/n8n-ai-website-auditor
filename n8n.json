@@ -1,11 +1,11 @@
 {
-  "name": "Free Website Audit with OpenRouter",
+  "name": "Dynamic Website Audit (Webhook + OpenRouter)",
   "nodes": [
     {
-      "parameters": {},
-      "id": "trigger",
-      "name": "Manual Trigger",
-      "type": "n8n-nodes-base.manualTrigger",
+      "parameters": { "path": "audit" },
+      "id": "webhook",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
       "position": [0, 0]
     },
@@ -15,36 +15,25 @@
           "string": [
             {
               "name": "url",
-              "value": "https://www.uniqueautoinc.ca/"
+              "value": "={{$json[\"query\"][\"url\"]}}"
             }
           ]
         }
       },
       "id": "setURL",
-      "name": "Set Website URL",
+      "name": "Set URL",
       "type": "n8n-nodes-base.set",
       "typeVersion": 2,
       "position": [200, 0]
     },
     {
       "parameters": {
-        "url": "https://www.googleapis.com/pagespeedonline/v5/runPagespeed",
+        "url": "=https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url={{encodeURIComponent($json[\"url\"])}}&key=AIzaSyAD9j-yFQ3cJy4H0sE2fJRZUJ9qJKGdbSo",
         "method": "GET",
-        "queryParametersUi": {
-          "parameter": [
-            {
-              "name": "url",
-              "value": "={{$json[\"url\"]}}"
-            },
-            {
-              "name": "key",
-              "value": "AIzaSyAD9j-yFQ3cJy4H0sE2fJRZUJ9qJKGdbSo"
-            }
-          ]
-        }
+        "responseFormat": "json"
       },
       "id": "pageSpeed",
-      "name": "Google PageSpeed API",
+      "name": "PageSpeed API",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 2,
       "position": [400, 0]
@@ -55,7 +44,7 @@
         "responseFormat": "string"
       },
       "id": "getHTML",
-      "name": "Fetch Website HTML",
+      "name": "Fetch HTML",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 2,
       "position": [400, 200]
@@ -67,7 +56,6 @@
         "method": "POST",
         "responseFormat": "json",
         "jsonParameters": true,
-        "options": {},
         "headers": [
           {
             "name": "Authorization",
@@ -78,59 +66,41 @@
             "value": "application/json"
           }
         ],
-        "bodyParametersJson": "={\n  \"model\": \"mistralai/mistral-7b-instruct\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"You are an expert web auditor. Based on this HTML code, give:\n1. Code improvement suggestions (HTML/CSS/JS)\n2. SEO suggestions (meta tags, alt tags, headers)\n\nHTML:\n{{$json[\"body\"]}}\"\n    }\n  ]\n}"
+        "bodyParametersJson": "={\n  \"model\":\"mistralai/mistral-7b-instruct\",\n  \"messages\":[{\"role\":\"user\",\"content\":\"Audit this HTML for code improvements and SEO fixes:\\n{{$json[\"body\"]}}\"}]\n}"
       },
       "id": "analyzeAI",
-      "name": "OpenRouter AI Analysis",
+      "name": "OpenRouter AI",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 2,
-      "position": [600, 200],
-      "credentials": {}
+      "position": [600, 200]
     },
     {
       "parameters": {
-        "functionCode": "return [{\n  json: {\n    report: `📄 Website Audit Report for: https://www.uniqueautoinc.ca/\n\n### 🚀 PageSpeed Score: ${$node[\"Google PageSpeed API\"].json[\"lighthouseResult\"].categories.performance.score * 100}/100\n\n\n---\n### 🛠 Code + SEO Suggestions (AI):\n${$node[\"OpenRouter AI Analysis\"].json.choices[0].message.content}\n\n---`\n  }\n}];"
+        "functionCode": "return [{ json: { text: `Report for ${$json.url}:\n\n• PageSpeed Score: ${Math.round($node[\"pageSpeed\"].json.lighthouseResult.categories.performance.score * 100)}/100\n\n• Suggestions:\n${$node[\"analyzeAI\"].json.choices[0].message.content}` } }];"
       },
-      "id": "formatOutput",
-      "name": "Format Final Report",
+      "id": "format",
+      "name": "Format Report",
       "type": "n8n-nodes-base.function",
       "typeVersion": 1,
       "position": [800, 200]
     },
     {
-      "parameters": {
-        "operation": "appendFile",
-        "filePath": "/mnt/data/website-audit.txt",
-        "data": "={{$json[\"report\"]}}"
-      },
-      "id": "saveReport",
-      "name": "Save Report to File",
-      "type": "n8n-nodes-base.fs",
+      "parameters": { "responseMode": "lastNode" },
+      "id": "respond",
+      "name": "Respond Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [1000, 200]
     }
   ],
   "connections": {
-    "Manual Trigger": {
-      "main": [["Set Website URL"]]
+    "Webhook": { "main": [["Set URL"]] },
+    "Set URL": {
+      "main": [["PageSpeed API"], ["Fetch HTML"]]
     },
-    "Set Website URL": {
-      "main": [
-        ["Google PageSpeed API"],
-        ["Fetch Website HTML"]
-      ]
-    },
-    "Fetch Website HTML": {
-      "main": [["OpenRouter AI Analysis"]]
-    },
-    "Google PageSpeed API": {
-      "main": [["Format Final Report"]]
-    },
-    "OpenRouter AI Analysis": {
-      "main": [["Format Final Report"]]
-    },
-    "Format Final Report": {
-      "main": [["Save Report to File"]]
-    }
+    "Fetch HTML": { "main": [["OpenRouter AI"]] },
+    "PageSpeed API": { "main": [["Format Report"]] },
+    "OpenRouter AI": { "main": [["Format Report"]] },
+    "Format Report": { "main": [["Respond Webhook"]] }
   }
 }
