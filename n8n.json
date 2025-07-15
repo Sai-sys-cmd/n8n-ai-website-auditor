@@ -1,0 +1,136 @@
+{
+  "name": "Free Website Audit with OpenRouter",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "trigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "url",
+              "value": "https://www.uniqueautoinc.ca/"
+            }
+          ]
+        }
+      },
+      "id": "setURL",
+      "name": "Set Website URL",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [200, 0]
+    },
+    {
+      "parameters": {
+        "url": "https://www.googleapis.com/pagespeedonline/v5/runPagespeed",
+        "method": "GET",
+        "queryParametersUi": {
+          "parameter": [
+            {
+              "name": "url",
+              "value": "={{$json[\"url\"]}}"
+            },
+            {
+              "name": "key",
+              "value": "AIzaSyAD9j-yFQ3cJy4H0sE2fJRZUJ9qJKGdbSo"
+            }
+          ]
+        }
+      },
+      "id": "pageSpeed",
+      "name": "Google PageSpeed API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": [400, 0]
+    },
+    {
+      "parameters": {
+        "url": "={{$json[\"url\"]}}",
+        "responseFormat": "string"
+      },
+      "id": "getHTML",
+      "name": "Fetch Website HTML",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": [400, 200]
+    },
+    {
+      "parameters": {
+        "authentication": "headerAuth",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "method": "POST",
+        "responseFormat": "json",
+        "jsonParameters": true,
+        "options": {},
+        "headers": [
+          {
+            "name": "Authorization",
+            "value": "Bearer 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"
+          },
+          {
+            "name": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "bodyParametersJson": "={\n  \"model\": \"mistralai/mistral-7b-instruct\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"You are an expert web auditor. Based on this HTML code, give:\n1. Code improvement suggestions (HTML/CSS/JS)\n2. SEO suggestions (meta tags, alt tags, headers)\n\nHTML:\n{{$json[\"body\"]}}\"\n    }\n  ]\n}"
+      },
+      "id": "analyzeAI",
+      "name": "OpenRouter AI Analysis",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": [600, 200],
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "functionCode": "return [{\n  json: {\n    report: `📄 Website Audit Report for: https://www.uniqueautoinc.ca/\n\n### 🚀 PageSpeed Score: ${$node[\"Google PageSpeed API\"].json[\"lighthouseResult\"].categories.performance.score * 100}/100\n\n\n---\n### 🛠 Code + SEO Suggestions (AI):\n${$node[\"OpenRouter AI Analysis\"].json.choices[0].message.content}\n\n---`\n  }\n}];"
+      },
+      "id": "formatOutput",
+      "name": "Format Final Report",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [800, 200]
+    },
+    {
+      "parameters": {
+        "operation": "appendFile",
+        "filePath": "/mnt/data/website-audit.txt",
+        "data": "={{$json[\"report\"]}}"
+      },
+      "id": "saveReport",
+      "name": "Save Report to File",
+      "type": "n8n-nodes-base.fs",
+      "typeVersion": 1,
+      "position": [1000, 200]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [["Set Website URL"]]
+    },
+    "Set Website URL": {
+      "main": [
+        ["Google PageSpeed API"],
+        ["Fetch Website HTML"]
+      ]
+    },
+    "Fetch Website HTML": {
+      "main": [["OpenRouter AI Analysis"]]
+    },
+    "Google PageSpeed API": {
+      "main": [["Format Final Report"]]
+    },
+    "OpenRouter AI Analysis": {
+      "main": [["Format Final Report"]]
+    },
+    "Format Final Report": {
+      "main": [["Save Report to File"]]
+    }
+  }
+}
